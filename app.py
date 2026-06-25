@@ -24,17 +24,31 @@ html, body, [class*="css"] {
     font-family: 'Inter', sans-serif;
 }
 
+/* Fix sidebar always visible */
+[data-testid="stSidebar"] {
+    min-width: 220px !important;
+    max-width: 260px !important;
+    display: block !important;
+    visibility: visible !important;
+}
+[data-testid="stSidebarNav"] { display: none; }
+
 /* Hide Streamlit chrome */
 #MainMenu, footer, header { visibility: hidden; }
 .block-container { padding: 2rem 2.5rem 2rem 2.5rem; max-width: 1100px; }
 
 /* Sidebar */
-[data-testid="stSidebar"] {
-    background: #0a0a0a;
-    border-right: 1px solid #1e1e1e;
+section[data-testid="stSidebar"] {
+    background: #0a0a0a !important;
+    border-right: 1px solid #1e1e1e !important;
+    min-width: 240px !important;
+    width: 240px !important;
 }
-[data-testid="stSidebar"] * { color: #a0a0a0 !important; }
-[data-testid="stSidebar"] .stRadio label { font-size: 0.85rem; letter-spacing: 0.02em; }
+section[data-testid="stSidebar"] * { color: #a0a0a0 !important; }
+section[data-testid="stSidebar"] .stRadio label { font-size: 0.85rem !important; letter-spacing: 0.02em !important; }
+section[data-testid="stSidebar"] > div { padding-top: 1rem !important; }
+[data-testid="stSidebarNav"] { display: none !important; }
+[data-testid="collapsedControl"] { display: flex !important; }
 
 /* Main background */
 .stApp { background: #0d0d0d; color: #e0e0e0; }
