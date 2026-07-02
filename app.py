@@ -224,7 +224,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Single Prediction", "Batch Upload
 # ═════════════════════════════════════════════════════════════════════════════
 with tab1:
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Model",     "XGBoost")
+    c1.metric("Model",     "Random Forest (Tuned)")
     c2.metric("Features",  str(len(art["feature_order"])))
     c3.metric("Threshold", f"{THRESHOLD:.2f}")
     c4.metric("Ref Date",  str(art["reference_date"].date()))
