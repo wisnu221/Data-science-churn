@@ -194,8 +194,7 @@ def preprocess(df_input, art):
 def predict(df_proc, art, thr):
     proba = art["model"].predict_proba(df_proc)[:,1]
     pred  = (proba >= thr).astype(int)
-    risk  = pd.cut(proba, bins=[0,.3,.6,1.], labels=["Low","Medium","High"])
-    return proba, pred, risk
+    return proba, pred
 
 # ── Top bar ───────────────────────────────────────────────────────────────────
 col_logo, col_thr = st.columns([3, 1])
@@ -234,30 +233,12 @@ with tab1:
     with ca:
         st.markdown("""<div class='card'>
             <div class='card-label'>Single Prediction</div>
-            <div class='card-desc'>Fill in one customer's data via form. Get instant churn probability and risk classification.</div>
+            <div class='card-desc'>Fill in one customer's data via form. Get instant churn probability.</div>
         </div>""", unsafe_allow_html=True)
     with cb:
         st.markdown("""<div class='card'>
             <div class='card-label'>Batch Upload</div>
-            <div class='card-desc'>Upload a CSV with multiple customers. Download predictions with probabilities and risk labels.</div>
-        </div>""", unsafe_allow_html=True)
-
-    st.markdown("<div class='sec'>Risk labels</div>", unsafe_allow_html=True)
-    r1, r2, r3 = st.columns(3)
-    with r1:
-        st.markdown("""<div class='card'>
-            <span class='pill pl-g'>Low Risk</span>
-            <div class='card-desc' style='margin-top:.6rem'>Probability &lt; 0.30 — customer likely to stay</div>
-        </div>""", unsafe_allow_html=True)
-    with r2:
-        st.markdown("""<div class='card'>
-            <span class='pill pl-y'>Medium Risk</span>
-            <div class='card-desc' style='margin-top:.6rem'>Probability 0.30 – 0.60 — monitor and consider retention</div>
-        </div>""", unsafe_allow_html=True)
-    with r3:
-        st.markdown("""<div class='card'>
-            <span class='pill pl-r'>High Risk</span>
-            <div class='card-desc' style='margin-top:.6rem'>Probability &gt; 0.60 — immediate intervention needed</div>
+            <div class='card-desc'>Upload a CSV with multiple customers. Download predictions with probabilities.</div>
         </div>""", unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -327,10 +308,8 @@ with tab2:
             "last_3_month_purchase_freq":purch_freq
         }])
         df_proc = preprocess(inp, art)
-        proba, pred, risk = predict(df_proc, art, THRESHOLD)
+        proba, pred = predict(df_proc, art, THRESHOLD)
         p = proba[0]; is_churn = pred[0]==1
-        risk_str = str(risk[0])
-        pill = f"<span class='pill {'pl-r' if risk_str=='High' else 'pl-y' if risk_str=='Medium' else 'pl-g'}'>{risk_str} Risk</span>"
         verdict = "Will churn" if is_churn else "Will not churn"
         vc = "#f87171" if is_churn else "#4ade80"
         cc = "churn" if is_churn else "no-churn"
@@ -340,7 +319,6 @@ with tab2:
                 <div>
                     <div style='font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:#444;margin-bottom:.4rem'>Result</div>
                     <div style='font-size:1.6rem;font-weight:600;color:{vc};font-family:JetBrains Mono,monospace'>{verdict}</div>
-                    <div style='margin-top:.7rem'>{pill}</div>
                 </div>
                 <div style='text-align:right'>
                     <div style='font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:#444;margin-bottom:.3rem'>Churn probability</div>
@@ -369,26 +347,21 @@ with tab3:
         with st.spinner("Processing..."):
             df_inp  = df_up.drop(columns=["churn"], errors="ignore")
             df_proc = preprocess(df_inp, art)
-            proba, pred, risk = predict(df_proc, art, THRESHOLD)
+            proba, pred = predict(df_proc, art, THRESHOLD)
 
         df_res = df_up.copy()
         df_res["churn_probability"] = (proba*100).round(2)
         df_res["churn_prediction"]  = pred
-        df_res["risk_label"]        = risk.astype(str)
 
         n_total=len(pred); n_churn=pred.sum()
-        n_high=(risk=="High").sum(); n_med=(risk=="Medium").sum(); n_low=(risk=="Low").sum()
 
         st.markdown("<div class='sec'>Summary</div>", unsafe_allow_html=True)
-        m1,m2,m3,m4,m5 = st.columns(5)
+        m1,m2 = st.columns(2)
         m1.metric("Total",         f"{n_total:,}")
         m2.metric("Churn",         f"{n_churn:,}")
-        m3.metric("High Risk",     f"{n_high:,}")
-        m4.metric("Medium Risk",   f"{n_med:,}")
-        m5.metric("Low Risk",      f"{n_low:,}")
 
         st.markdown("<div class='sec'>Distribution</div>", unsafe_allow_html=True)
-        fig, axes = plt.subplots(1,3,figsize=(14,4)); fig.patch.set_facecolor('#141414')
+        fig, axes = plt.subplots(1,2,figsize=(10,4)); fig.patch.set_facecolor('#141414')
 
         # Donut
         ax = axes[0]
@@ -408,17 +381,6 @@ with tab3:
         ax2.set_title('Probability Distribution',fontsize=9,color='#666',pad=10,fontweight='400')
         ax2.legend(fontsize=7,framealpha=0)
 
-        # Risk bars
-        ax3 = axes[2]
-        bars = ax3.bar(['Low','Medium','High'],[n_low,n_med,n_high],
-                       color=['#4ade80','#facc15','#f87171'],width=0.45,
-                       edgecolor='#141414',linewidth=1)
-        for bar,val in zip(bars,[n_low,n_med,n_high]):
-            ax3.text(bar.get_x()+bar.get_width()/2, bar.get_height()+max(n_low,n_med,n_high)*0.02,
-                     str(val),ha='center',fontsize=8,color='#aaa')
-        ax3.set_title('Risk Breakdown',fontsize=9,color='#666',pad=10,fontweight='400')
-        ax3.grid(True,alpha=0.2,axis='y')
-
         plt.tight_layout(pad=2); st.pyplot(fig); plt.close()
 
         if has_actual:
@@ -432,7 +394,7 @@ with tab3:
 
         st.markdown("<div class='sec'>Results</div>", unsafe_allow_html=True)
         show = [c for c in ["customer_id","country","subscription_type","total_spent",
-                             "satisfaction_score","churn_probability","churn_prediction","risk_label"]
+                             "satisfaction_score","churn_probability","churn_prediction"]
                 if c in df_res.columns]
         st.dataframe(df_res[show], use_container_width=True, height=280)
         st.download_button("Download results (.csv)",
