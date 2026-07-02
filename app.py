@@ -242,70 +242,159 @@ with tab1:
         </div>""", unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
-# TAB 2 — SINGLE PREDICTION
+# TAB 2 — SINGLE PREDICTION (form built from the top 15 most important features)
 # ═════════════════════════════════════════════════════════════════════════════
+
+# Default values used for every raw field. Fields not exposed in the form
+# (because they don't feed any of the top-15 features) keep these defaults.
+RAW_DEFAULTS = {
+    "gender": "Male", "age": 32, "country": "India", "is_premium_user": 0,
+    "signup_date": pd.to_datetime("2022-06-01"), "last_purchase_date": pd.to_datetime("2024-08-15"),
+    "subscription_type": "Monthly", "payment_method": "Credit Card",
+    "acquisition_channel": "Organic", "device_type": "Mobile",
+    "total_spent": 350.0, "avg_order_value": 55.0, "lifetime_value": 600.0,
+    "marketing_spend_per_user": 12.0, "total_visits": 25, "avg_session_time": 6.0,
+    "pages_per_session": 3.5, "email_open_rate": 0.30, "email_click_rate": 0.08,
+    "support_tickets": 1, "refund_requested": 0, "delivery_delay_days": 1,
+    "satisfaction_score": 3.5, "nps_score": 6, "discount_used": 0,
+    "last_3_month_purchase_freq": 2,
+}
+
+# Which raw input field(s) each engineered/model feature depends on.
+FEATURE_TO_RAW = {
+    "gender": ["gender"], "age": ["age"], "country": ["country"],
+    "is_premium_user": ["is_premium_user"],
+    "customer_tenure_days": ["signup_date"], "recency_days": ["last_purchase_date"],
+    "signup_year": ["signup_date"], "signup_month": ["signup_date"],
+    "subscription_type": ["subscription_type"], "payment_method": ["payment_method"],
+    "acquisition_channel": ["acquisition_channel"], "device_type": ["device_type"],
+    "total_spent": ["total_spent"], "avg_order_value": ["avg_order_value"],
+    "lifetime_value": ["lifetime_value"], "marketing_spend_per_user": ["marketing_spend_per_user"],
+    "total_visits": ["total_visits"], "avg_session_time": ["avg_session_time"],
+    "pages_per_session": ["pages_per_session"],
+    "email_open_rate": ["email_open_rate"], "email_click_rate": ["email_click_rate"],
+    "engagement_score": ["email_open_rate", "email_click_rate"],
+    "spend_per_visit": ["total_spent", "total_visits"],
+    "support_tickets": ["support_tickets"], "refund_requested": ["refund_requested"],
+    "refund_rate": ["refund_requested", "support_tickets"],
+    "delivery_delay_days": ["delivery_delay_days"], "satisfaction_score": ["satisfaction_score"],
+    "nps_score": ["nps_score"], "discount_used": ["discount_used"],
+    "last_3_month_purchase_freq": ["last_3_month_purchase_freq"],
+}
+
+# Widget label + options (for categorical fields, pulled from the trained encoders when available)
+FIELD_LABELS = {
+    "gender": "Gender", "age": "Age", "country": "Country", "is_premium_user": "Premium User",
+    "signup_date": "Signup Date", "last_purchase_date": "Last Purchase",
+    "subscription_type": "Subscription", "payment_method": "Payment Method",
+    "acquisition_channel": "Acquisition Channel", "device_type": "Device",
+    "total_spent": "Total Spent ($)", "avg_order_value": "Avg Order Value ($)",
+    "lifetime_value": "Lifetime Value ($)", "marketing_spend_per_user": "Marketing Spend ($)",
+    "total_visits": "Total Visits", "avg_session_time": "Avg Session (min)",
+    "pages_per_session": "Pages / Session", "email_open_rate": "Email Open Rate",
+    "email_click_rate": "Email Click Rate", "support_tickets": "Support Tickets",
+    "refund_requested": "Refund Requested", "delivery_delay_days": "Delivery Delay (days)",
+    "satisfaction_score": "Satisfaction (1–5)", "nps_score": "NPS (0–10)",
+    "discount_used": "Discount Used", "last_3_month_purchase_freq": "Purchase Freq (last 3 months)",
+}
+CAT_FALLBACK_OPTIONS = {
+    "gender": ["Male","Female","Other"], "country": ["India","USA","Germany","UK","Bangladesh"],
+    "subscription_type": ["Monthly","Annual"],
+    "payment_method": ["Credit Card","Debit Card","PayPal","Bank Transfer"],
+    "acquisition_channel": ["Organic","Email","Paid Ad","Referral","Social Media"],
+    "device_type": ["Mobile","Desktop","Tablet"],
+}
+
+def cat_options(field):
+    cat_cols = art.get("cat_cols", [])
+    encoders = art.get("label_encoders", {})
+    if field in cat_cols and field in encoders:
+        return list(encoders[field].classes_)
+    return CAT_FALLBACK_OPTIONS.get(field, [])
+
+def render_field(container, field):
+    label = FIELD_LABELS[field]
+    default = RAW_DEFAULTS[field]
+    if field in ("gender","country","subscription_type","payment_method",
+                 "acquisition_channel","device_type"):
+        opts = cat_options(field)
+        idx = opts.index(default) if default in opts else 0
+        return container.selectbox(label, opts, index=idx)
+    if field in ("is_premium_user","refund_requested","discount_used"):
+        return container.selectbox(label, [0,1], index=default, format_func=lambda x:"Yes" if x else "No")
+    if field == "signup_date":
+        return container.date_input(label, value=default)
+    if field == "last_purchase_date":
+        return container.date_input(label, value=default)
+    if field in ("email_open_rate","email_click_rate"):
+        return container.slider(label, 0.0, 1.0, float(default))
+    if field == "satisfaction_score":
+        return container.slider(label, 1.0, 5.0, float(default))
+    if field == "nps_score":
+        return container.slider(label, 0, 10, int(default))
+    if field in ("total_spent","avg_order_value","lifetime_value","marketing_spend_per_user",
+                 "avg_session_time","pages_per_session"):
+        return container.number_input(label, 0.0, float(default)*20 + 100, float(default))
+    # integer counters
+    return container.number_input(label, 0, int(default)*20 + 50, int(default))
+
 with tab2:
+    imp_series = pd.Series(art["model"].feature_importances_, index=art["feature_order"]) \
+                   .sort_values(ascending=False)
+    top15 = imp_series.head(15)
+
+    st.markdown("<div class='sec'>Top 15 Most Important Features</div>", unsafe_allow_html=True)
+    fig_t, ax_t = plt.subplots(figsize=(9,3.2)); fig_t.patch.set_facecolor('#141414')
+    norm = plt.Normalize(top15.min(), top15.max())
+    colors = plt.cm.Blues(norm(top15.values[::-1])*0.6+0.3)
+    ax_t.barh(top15.index[::-1], top15.values[::-1], color=colors, height=0.62,
+              edgecolor='#141414', linewidth=0.5)
+    for i, v in enumerate(top15.values[::-1]):
+        ax_t.text(v+top15.max()*0.01, i, f'{v:.4f}', va='center', fontsize=7, color='#555')
+    ax_t.set_xlim(0, top15.max()*1.2)
+    ax_t.grid(True, alpha=0.15, axis='x')
+    plt.tight_layout(); st.pyplot(fig_t); plt.close()
+
+    # Union of raw fields that feed the top-15 features, in a stable order
+    raw_fields_needed = []
+    for feat in top15.index:
+        for raw in FEATURE_TO_RAW.get(feat, []):
+            if raw not in raw_fields_needed:
+                raw_fields_needed.append(raw)
+
+    st.markdown(
+        f"<div style='color:#555;font-size:0.8rem;margin:0.8rem 0 1.2rem'>"
+        f"Form hanya menampilkan {len(raw_fields_needed)} input mentah yang mendukung 15 fitur "
+        f"paling berpengaruh di atas. Field lain memakai nilai default.</div>",
+        unsafe_allow_html=True
+    )
+
     with st.form("form_pred"):
-        st.markdown("<div class='sec'>Demographics</div>", unsafe_allow_html=True)
-        c1,c2,c3,c4 = st.columns(4)
-        gender  = c1.selectbox("Gender",  ["Male","Female","Other"])
-        age     = c2.number_input("Age", 18, 80, 32)
-        country = c3.selectbox("Country", ["India","USA","Germany","UK","Bangladesh"])
-        is_prem = c4.selectbox("Premium User", [0,1], format_func=lambda x:"Yes" if x else "No")
-
-        c5,c6 = st.columns(2)
-        signup_date = c5.date_input("Signup Date",    value=pd.to_datetime("2022-06-01"))
-        last_purch  = c6.date_input("Last Purchase",  value=pd.to_datetime("2024-08-15"))
-
-        st.markdown("<div class='sec'>Subscription & Payment</div>", unsafe_allow_html=True)
-        c7,c8,c9,c10 = st.columns(4)
-        sub_type   = c7.selectbox("Subscription",        ["Monthly","Annual"])
-        pay_method = c8.selectbox("Payment Method",      ["Credit Card","Debit Card","PayPal","Bank Transfer"])
-        acq_ch     = c9.selectbox("Acquisition Channel", ["Organic","Email","Paid Ad","Referral","Social Media"])
-        device     = c10.selectbox("Device",             ["Mobile","Desktop","Tablet"])
-
-        st.markdown("<div class='sec'>Financials</div>", unsafe_allow_html=True)
-        c11,c12,c13,c14 = st.columns(4)
-        total_spent = c11.number_input("Total Spent ($)",      0.0, 10000.0, 350.0)
-        avg_order   = c12.number_input("Avg Order Value ($)",  0.0, 5000.0,   55.0)
-        ltv         = c13.number_input("Lifetime Value ($)",   0.0, 20000.0, 600.0)
-        mktg_spend  = c14.number_input("Marketing Spend ($)",  0.0, 100.0,    12.0)
-
-        st.markdown("<div class='sec'>Engagement</div>", unsafe_allow_html=True)
-        c15,c16,c17 = st.columns(3)
-        total_visits = c15.number_input("Total Visits",         0, 500, 25)
-        avg_sess     = c16.number_input("Avg Session (min)",    0.0, 60.0, 6.0)
-        pages_sess   = c17.number_input("Pages / Session",      0.0, 30.0, 3.5)
-        c18,c19 = st.columns(2)
-        email_open  = c18.slider("Email Open Rate",  0.0, 1.0, 0.30)
-        email_click = c19.slider("Email Click Rate", 0.0, 1.0, 0.08)
-
-        st.markdown("<div class='sec'>Support & Satisfaction</div>", unsafe_allow_html=True)
-        c20,c21,c22,c23,c24 = st.columns(5)
-        support_tk = c20.number_input("Support Tickets", 0, 20, 1)
-        refund_req = c21.selectbox("Refund Requested", [0,1], format_func=lambda x:"Yes" if x else "No")
-        delay_days = c22.number_input("Delivery Delay (days)", 0, 30, 1)
-        sat_score  = c23.slider("Satisfaction (1–5)", 1.0, 5.0, 3.5)
-        nps        = c24.slider("NPS (0–10)", 0, 10, 6)
-
-        c25,c26 = st.columns([1,3])
-        disc_used  = c25.selectbox("Discount Used", [0,1], format_func=lambda x:"Yes" if x else "No")
-        purch_freq = c26.number_input("Purchase Freq (last 3 months)", 0, 30, 2)
-
+        values = {}
+        cols = st.columns(3)
+        for i, field in enumerate(raw_fields_needed):
+            values[field] = render_field(cols[i % 3], field)
         submitted = st.form_submit_button("Run prediction", use_container_width=False)
 
     if submitted:
+        row = dict(RAW_DEFAULTS)
+        row.update(values)
         inp = pd.DataFrame([{
-            "customer_id":0,"gender":gender,"age":age,"country":country,"city":"Unknown",
-            "signup_date":str(signup_date),"last_purchase_date":str(last_purch),
-            "acquisition_channel":acq_ch,"device_type":device,"subscription_type":sub_type,
-            "is_premium_user":is_prem,"total_visits":total_visits,"avg_session_time":avg_sess,
-            "pages_per_session":pages_sess,"email_open_rate":email_open,"email_click_rate":email_click,
-            "total_spent":total_spent,"avg_order_value":avg_order,"discount_used":disc_used,
-            "coupon_code":"No Coupon","support_tickets":support_tk,"refund_requested":refund_req,
-            "delivery_delay_days":delay_days,"payment_method":pay_method,"satisfaction_score":sat_score,
-            "nps_score":nps,"marketing_spend_per_user":mktg_spend,"lifetime_value":ltv,
-            "last_3_month_purchase_freq":purch_freq
+            "customer_id":0,"gender":row["gender"],"age":row["age"],"country":row["country"],
+            "city":"Unknown","signup_date":str(row["signup_date"]),
+            "last_purchase_date":str(row["last_purchase_date"]),
+            "acquisition_channel":row["acquisition_channel"],"device_type":row["device_type"],
+            "subscription_type":row["subscription_type"],"is_premium_user":row["is_premium_user"],
+            "total_visits":row["total_visits"],"avg_session_time":row["avg_session_time"],
+            "pages_per_session":row["pages_per_session"],"email_open_rate":row["email_open_rate"],
+            "email_click_rate":row["email_click_rate"],"total_spent":row["total_spent"],
+            "avg_order_value":row["avg_order_value"],"discount_used":row["discount_used"],
+            "coupon_code":"No Coupon","support_tickets":row["support_tickets"],
+            "refund_requested":row["refund_requested"],"delivery_delay_days":row["delivery_delay_days"],
+            "payment_method":row["payment_method"],"satisfaction_score":row["satisfaction_score"],
+            "nps_score":row["nps_score"],"marketing_spend_per_user":row["marketing_spend_per_user"],
+            "lifetime_value":row["lifetime_value"],
+            "last_3_month_purchase_freq":row["last_3_month_purchase_freq"]
         }])
         df_proc = preprocess(inp, art)
         proba, pred = predict(df_proc, art, THRESHOLD)
