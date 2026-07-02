@@ -6,3 +6,4 @@ imbalanced-learn
 xgboost
 matplotlib
 seaborn
+https://data-science-churn-9ps5ppmarkf6hapzh9cwa3.streamlit.app/
